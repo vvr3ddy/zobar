@@ -193,4 +193,3 @@ def progress_bar(iterable, desc: str = "", total: int = None, **kwargs):
         for item in iterable:
             yield item
             pbar.update(1)
-
