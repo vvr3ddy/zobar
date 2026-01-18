@@ -2,6 +2,8 @@
 
 **Zero Overhead Bar**
 
+![zobar demo](./media/demo_parallel.gif)
+
 A zero-dependency, high-performance, hygienically correct progress bar for Python. Designed for HPC environments, workstations, and anywhere you need a progress bar that just works without breaking your terminal logs.
 
 ## Features
