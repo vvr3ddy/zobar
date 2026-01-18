@@ -169,7 +169,10 @@ class AnimatedProgressBar:
         if not self.is_tty:
             if force or self.current == self.total:
                 progress = min(self.current / max(self.total, 1), 1.0)
-                print(f"{self.desc}: {progress*100:.1f}% ({self.current}/{self.total})", file=sys.stderr)
+                msg = f"{self.desc}: {progress*100:.1f}% ({self.current}/{self.total})"
+                if self.suffix:
+                    msg += f" {self.suffix}"
+                print(msg, file=sys.stderr)
             return
         
         line = self._build_line()
