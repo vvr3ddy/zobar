@@ -2,7 +2,7 @@
 
 **Zero Overhead Bar**
 
-![zobar demo](./media/demo_parallel.gif)
+![zobar demo](https://raw.githubusercontent.com/vvr3ddy/zobar/refs/heads/master/media/demo_parallel.gif)
 
 A zero-dependency, high-performance, hygienically correct progress bar for Python. Designed for HPC environments, workstations, and anywhere you need a progress bar that just works without breaking your terminal logs.
 
@@ -59,6 +59,14 @@ with AnimatedProgressBar(total=total_steps, desc="Downloading", bar_style='brail
 ### Styles
 
 Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.
+
+## Changelog
+
+### v0.1.3
+*   Added `log_interval` parameter for realtime logging in non-TTY environments (default: 30s).
+
+### v0.1.2
+*   Added suffix support in non-TTY logs.
 
 ## License
 
