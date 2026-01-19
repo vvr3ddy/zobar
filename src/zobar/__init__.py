@@ -48,7 +48,7 @@ class AnimatedProgressBar:
     CLEAR_LINE = '\033[K'  # Clear from cursor to end of line
     
     def __init__(self, total: int, desc: str = "", bar_style: str = 'gradient',
-                 color: str = 'cyan', width: int = 35, unit: str = "it"):
+                 color: str = 'cyan', width: int = 35, unit: str = "it", log_interval: float = 30.0):
         self.total = total
         self.desc = desc
         self.bar_style = bar_style
@@ -59,6 +59,8 @@ class AnimatedProgressBar:
         self.start_time = None
         self.spinner_idx = 0
         self.suffix = ""
+        self.log_interval = log_interval
+        self.last_log_time = 0
         
         # Rule 6: TTY detection
         self.is_tty = sys.stdout.isatty()
@@ -72,6 +74,7 @@ class AnimatedProgressBar:
             
     def __enter__(self):
         self.start_time = time.time()
+        self.last_log_time = self.start_time
         self._display()
         return self
     
@@ -167,7 +170,18 @@ class AnimatedProgressBar:
         
         # Rule 6: Graceful degradation for non-TTY
         if not self.is_tty:
+            now = time.time()
+            should_log = False
+            
+            # Log if finished
             if force or self.current == self.total:
+                should_log = True
+            # Log if interval passed
+            elif self.log_interval and (now - self.last_log_time >= self.log_interval):
+                should_log = True
+                self.last_log_time = now
+                
+            if should_log:
                 progress = min(self.current / max(self.total, 1), 1.0)
                 msg = f"{self.desc}: {progress*100:.1f}% ({self.current}/{self.total})"
                 if self.suffix:
