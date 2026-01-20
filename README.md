@@ -62,6 +62,9 @@ Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.
 
 ## Changelog
 
+### v0.1.4
+*   Fixed suffix truncation by implementing multi-line wrapping and proper cursor management.
+
 ### v0.1.3
 *   Added `log_interval` parameter for realtime logging in non-TTY environments (default: 30s).
 
