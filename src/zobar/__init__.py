@@ -46,6 +46,7 @@ class AnimatedProgressBar:
     }
     
     CLEAR_LINE = '\033[K'  # Clear from cursor to end of line
+    CLEAR_DOWN = '\033[J'  # Clear from cursor to end of screen
     
     def __init__(self, total: int, desc: str = "", bar_style: str = 'gradient',
                  color: str = 'cyan', width: int = 35, unit: str = "it", log_interval: float = 30.0):
@@ -65,6 +66,7 @@ class AnimatedProgressBar:
         # Rule 6: TTY detection
         self.is_tty = sys.stdout.isatty()
         self._last_drawn = -1  # For deduplication
+        self._last_line_count = 1 # Track number of lines for clearing
         
         # Issue 2 fix: Use stdout fd for terminal size
         try:
@@ -82,7 +84,10 @@ class AnimatedProgressBar:
         # Issue 1 fix: Don't redraw twice, just show final message
         c = self.COLORS
         if self.is_tty:
-            sys.stdout.write(f"\r{self.CLEAR_LINE}{c['green']}✓ Done{c['reset']}\n")
+            # Clear previous lines if multiline
+            if self._last_line_count > 1:
+                sys.stdout.write(f"\033[{self._last_line_count - 1}A")
+            sys.stdout.write(f"\r{self.CLEAR_DOWN}{c['green']}✓ Done{c['reset']}\n")
             sys.stdout.flush()
         else:
             print("✓ Done", file=sys.stderr)
@@ -115,6 +120,19 @@ class AnimatedProgressBar:
             bar = style[0] * filled + style[-1] * (self.width - filled)
         return bar
     
+    def _truncate(self, s: str, width: int) -> str:
+        """Truncate string to width, preserving structure."""
+        if visible_len(s) <= width:
+            return s
+        
+        max_len = width - 3
+        truncated = ""
+        for char in s:
+            if visible_len(truncated + char + "...") > max_len:
+                break
+            truncated += char
+        return truncated + "..."
+
     def _build_line(self) -> str:
         """Build the progress line with proper structure."""
         progress = min(self.current / max(self.total, 1), 1.0)
@@ -141,21 +159,30 @@ class AnimatedProgressBar:
             f"{speed:.1f} {self.unit}/s",
             f"{elapsed:.1f}s",
             f"ETA: {eta:.0f}s" if self.current < self.total else "",
-            f"{c['yellow']}{self.suffix}{c['reset']}" if self.suffix else "",
         ]
-        line = " ".join(p for p in parts if p)
+        main_line = " ".join(p for p in parts if p)
+        suffix_part = f"{c['yellow']}{self.suffix}{c['reset']}" if self.suffix else ""
         
-        # Rule 4: ANSI-aware truncation
-        if visible_len(line) > self.term_width - 2:
-            # Truncate content, preserve structure
-            max_len = self.term_width - 5
-            truncated = ""
-            for char in line:
-                if visible_len(truncated + char + "...") > max_len:
-                    break
-                truncated += char
-            line = truncated + "..."
+        # Check if everything fits on one line
+        full_line = main_line + (" " + suffix_part if suffix_part else "")
         
+        if visible_len(full_line) <= self.term_width - 2:
+            line = full_line
+        else:
+            # Wrap mode
+            # 1. Truncate main line if it's too long
+            if visible_len(main_line) > self.term_width - 2:
+                main_line = self._truncate(main_line, self.term_width - 2)
+            
+            # 2. Add suffix on new line
+            # Truncate suffix if it's too long for the line
+            if suffix_part:
+                if visible_len(suffix_part) > self.term_width - 2:
+                    suffix_part = self._truncate(suffix_part, self.term_width - 2)
+                line = main_line + "\n" + suffix_part
+            else:
+                line = main_line # Should have been caught by full_line check, but safe fallback
+
         # Rule 5: Always end with color reset
         if not line.endswith(c['reset']):
             line += c['reset']
@@ -195,8 +222,15 @@ class AnimatedProgressBar:
         self.spinner_idx += 1
         
         # Rule 2: Clear line before redraw
-        sys.stdout.write(f"\r{self.CLEAR_LINE}{line}")
+        # Handle multiline clear
+        if self._last_line_count > 1:
+            sys.stdout.write(f"\033[{self._last_line_count - 1}A")
+            
+        sys.stdout.write(f"\r{self.CLEAR_DOWN}{line}")
         sys.stdout.flush()
+        
+        # Update last line count
+        self._last_line_count = line.count('\n') + 1
 
 
 # Backwards compatible alias
