@@ -81,6 +81,25 @@ with ProgressBarGroup() as group:
 
 Each bar can be updated independently, and the group handles all cursor positioning automatically.
 
+### Async Support
+
+For async/await codebases, use the async context manager or async iterator:
+
+```python
+import asyncio
+from zobar import AnimatedProgressBar, async_progress_bar
+
+# Async context manager
+async with AnimatedProgressBar(total=100, desc="Processing") as pbar:
+    for i in range(100):
+        await asyncio.sleep(0.05)
+        pbar.update(1)
+
+# Async iterator wrapper
+async for item in async_progress_bar(async_items, total=100, desc="Processing"):
+    await process(item)
+```
+
 ### Styles
 
 Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.

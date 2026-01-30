@@ -15,7 +15,7 @@ import os
 import re
 import sys
 import time
-from typing import Any, Iterable, Iterator, Literal, Sequence, TypeVar
+from typing import Any, AsyncIterable, AsyncIterator, Iterable, Iterator, Literal, Sequence, TypeVar
 
 # ANSI escape pattern for width calculation
 ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
@@ -133,6 +133,33 @@ class AnimatedProgressBar:
         c = self.COLORS
         if self.is_tty:
             # Clear previous lines if multiline
+            if self._last_line_count > 1:
+                sys.stdout.write(f"\033[{self._last_line_count - 1}A")
+            sys.stdout.write(f"\r{self.CLEAR_DOWN}{c['green']}✓ Done{c['reset']}\n")
+            sys.stdout.flush()
+        else:
+            print("✓ Done", file=sys.stderr)
+
+    async def __aenter__(self) -> AnimatedProgressBar:
+        """Async enter the context manager and start the progress bar.
+
+        Returns:
+            The progress bar instance.
+        """
+        self.start_time = time.time()
+        self.last_log_time = self.start_time
+        self._display()
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        """Async exit the context manager and display completion message.
+
+        Args:
+            *args: Exception info if an exception was raised (ignored).
+        """
+        # Same logic as sync __exit__
+        c = self.COLORS
+        if self.is_tty:
             if self._last_line_count > 1:
                 sys.stdout.write(f"\033[{self._last_line_count - 1}A")
             sys.stdout.write(f"\r{self.CLEAR_DOWN}{c['green']}✓ Done{c['reset']}\n")
@@ -506,3 +533,47 @@ def progress_bar(
         for item in iterable:
             yield item
             pbar.update(1)
+
+
+async def async_progress_bar(
+    iterable: AsyncIterable[T],
+    desc: str = "",
+    total: int | None = None,
+    **kwargs: Any,
+) -> AsyncIterator[T]:
+    """Async iterator wrapper with progress bar.
+
+    Args:
+        iterable: An async iterable to wrap with progress tracking.
+        desc: Description text to display before the bar.
+        total: Total number of items (auto-detected if possible).
+        **kwargs: Additional arguments passed to AnimatedProgressBar.
+
+    Yields:
+        Items from the async iterable while showing progress.
+
+    Example:
+        >>> async for item in async_progress_bar(async_gen(), desc="Processing"):
+        ...     await process(item)
+
+    Note:
+        If the iterable doesn't support __len__, you must provide total explicitly.
+    """
+    # Try to get total from __len__ if available
+    if total is None:
+        if hasattr(iterable, '__len__'):
+            total = len(iterable)  # type: ignore
+        else:
+            raise ValueError(
+                "total must be specified for async iterables that don't support __len__"
+            )
+
+    pbar = AnimatedProgressBar(total=total, desc=desc, **kwargs)
+    await pbar.__aenter__()
+
+    try:
+        async for item in iterable:
+            yield item
+            pbar.update(1)
+    finally:
+        await pbar.__aexit__(None, None, None)
