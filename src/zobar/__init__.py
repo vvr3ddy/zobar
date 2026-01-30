@@ -108,6 +108,9 @@ class AnimatedProgressBar:
             self.term_width: int = os.get_terminal_size(sys.stdout.fileno()).columns
         except OSError:
             self.term_width = 80
+
+        # Group support for parallel bars
+        self._group: ProgressBarGroup | None = None
             
     def __enter__(self) -> AnimatedProgressBar:
         """Enter the context manager and start the progress bar.
@@ -144,7 +147,12 @@ class AnimatedProgressBar:
             n: Number of steps to increment progress by.
         """
         self.current = min(self.current + n, self.total)  # Improvement 3: Clamp
-        self._display()
+
+        # If part of a group, let the group handle display
+        if self._group and self._group.is_tty:
+            self._group.refresh()
+        else:
+            self._display()
 
     def set_suffix(self, suffix: str) -> None:
         """Set a suffix to display after the progress bar.
@@ -314,6 +322,162 @@ class AnimatedProgressBar:
 
 # Backwards compatible alias
 ProgressBar = AnimatedProgressBar
+
+
+class ProgressBarGroup:
+    """Manages multiple progress bars with automatic cursor positioning.
+
+    This class enables displaying and updating multiple progress bars
+    simultaneously with proper terminal hygiene. Each bar can be
+    independently updated and the group handles rendering all bars.
+
+    Example:
+        >>> with ProgressBarGroup() as group:
+        ...     bar1 = group.add_bar(total=100, desc="Download", color="green")
+        ...     bar2 = group.add_bar(total=50, desc="Process", color="blue")
+        ...     bar1.update(10)
+        ...     bar2.update(5)
+    """
+
+    HIDE_CURSOR = '\033[?25l'
+    SHOW_CURSOR = '\033[?25h'
+
+    def __init__(self, refresh_interval: float = 0.05) -> None:
+        """Initialize the progress bar group.
+
+        Args:
+            refresh_interval: Seconds between automatic refreshes (default: 0.05).
+        """
+        self.bars: list[AnimatedProgressBar] = []
+        self.refresh_interval = refresh_interval
+        self.is_tty: bool = sys.stdout.isatty()
+        self._active: bool = False
+        self._start_time: float | None = None
+
+    def add_bar(
+        self,
+        total: int,
+        desc: str = "",
+        bar_style: BarStyleType = 'gradient',
+        color: ColorType = 'cyan',
+        width: int = 35,
+        unit: str = "it",
+    ) -> AnimatedProgressBar:
+        """Add a new progress bar to the group.
+
+        Args:
+            total: Total number of items/iterations.
+            desc: Description text to display before the bar.
+            bar_style: Visual style of the progress bar.
+            color: Color scheme for the bar.
+            width: Width of the progress bar in characters.
+            unit: Unit label for the progress display.
+
+        Returns:
+            The created AnimatedProgressBar instance.
+        """
+        bar = AnimatedProgressBar(
+            total=total,
+            desc=desc,
+            bar_style=bar_style,
+            color=color,
+            width=width,
+            unit=unit,
+        )
+        # Link bar to this group
+        bar._group = self
+        # Initialize start time if group is already active
+        if self._active and self._start_time:
+            bar.start_time = self._start_time
+            bar.last_log_time = self._start_time
+        self.bars.append(bar)
+        return bar
+
+    def remove_bar(self, bar: AnimatedProgressBar) -> None:
+        """Remove a progress bar from the group.
+
+        Args:
+            bar: The progress bar instance to remove.
+        """
+        if bar in self.bars:
+            self.bars.remove(bar)
+
+    def refresh(self) -> None:
+        """Refresh the display of all progress bars.
+
+        This method is called automatically when bars are updated,
+        but can be called manually to force a refresh.
+        """
+        if not self.is_tty:
+            return
+
+        # Move cursor to the top of our display area
+        if self.bars:
+            # Calculate total lines (each bar may have multiple lines due to wrapping)
+            total_lines = sum(self._count_lines(bar) for bar in self.bars)
+            sys.stdout.write(f"\033[{total_lines}A")
+
+        # Redraw all bars
+        for bar in self.bars:
+            line = bar._build_line()
+            sys.stdout.write(f"\r\033[K{line}\n")
+            # Advance spinner for animation
+            bar.spinner_idx += 1
+
+        sys.stdout.flush()
+
+    def _count_lines(self, bar: AnimatedProgressBar) -> int:
+        """Count the number of lines a bar will occupy.
+
+        Args:
+            bar: The progress bar to count lines for.
+
+        Returns:
+            Number of lines the bar occupies.
+        """
+        line = bar._build_line()
+        return line.count('\n') + 1
+
+    def __enter__(self) -> ProgressBarGroup:
+        """Enter the context manager and start displaying bars.
+
+        Returns:
+            The ProgressBarGroup instance.
+        """
+        self._active = True
+        self._start_time = time.time()
+        for bar in self.bars:
+            bar.start_time = self._start_time
+            bar.last_log_time = self._start_time
+
+        if self.is_tty:
+            sys.stdout.write(self.HIDE_CURSOR)
+            sys.stdout.flush()
+
+        self.refresh()
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        """Exit the context manager and clean up.
+
+        Args:
+            *args: Exception info if an exception was raised (ignored).
+        """
+        self._active = False
+
+        if self.is_tty:
+            # Show final state
+            self.refresh()
+            # Show cursor
+            sys.stdout.write(self.SHOW_CURSOR)
+            # Move to a new line
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+        else:
+            # Non-TTY: log completion for all bars
+            for bar in self.bars:
+                progress = min(bar.current / max(bar.total, 1), 1.0)
+                print(f"{bar.desc}: {progress*100:.1f}% ({bar.current}/{bar.total}) - Done", file=sys.stderr)
 
 
 def progress_bar(

@@ -56,6 +56,31 @@ with AnimatedProgressBar(total=total_steps, desc="Downloading", bar_style='brail
             pbar.set_suffix(f"Current file: {i}")
 ```
 
+### Parallel Progress Bars
+
+For tracking multiple concurrent tasks, use `ProgressBarGroup`:
+
+```python
+import time
+from zobar import ProgressBarGroup
+
+with ProgressBarGroup() as group:
+    download = group.add_bar(total=100, desc="Download", color="green")
+    process = group.add_bar(total=50, desc="Process", color="blue")
+    upload = group.add_bar(total=75, desc="Upload", color="magenta")
+
+    # Update each bar independently
+    for i in range(100):
+        download.update(1)
+        if i % 2 == 0:
+            process.update(1)
+        if i > 50 and i % 3 == 0:
+            upload.update(1)
+        time.sleep(0.05)
+```
+
+Each bar can be updated independently, and the group handles all cursor positioning automatically.
+
 ### Styles
 
 Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.
