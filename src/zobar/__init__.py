@@ -23,6 +23,7 @@ ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
 # Type aliases for better readability
 ColorType = Literal['cyan', 'green', 'yellow', 'blue', 'magenta', 'red', 'reset', 'bold']
 BarStyleType = Literal['classic', 'gradient', 'braille', 'circles', 'blocks']
+UnitScaleType = Literal['none', 'kmg', 'binary']
 
 T = TypeVar('T')
 
@@ -37,6 +38,50 @@ def visible_len(s: str) -> int:
         The visible length of the string with ANSI codes removed.
     """
     return len(ANSI_RE.sub('', s))
+
+
+def format_number(n: float, scale: UnitScaleType = 'none') -> str:
+    """Format a number with appropriate scale suffix.
+
+    Args:
+        n: The number to format.
+        scale: The scaling mode: 'none', 'kmg' (K/M/B), or 'binary' (KiB/MiB/GiB).
+
+    Returns:
+        Formatted string with scale suffix.
+    """
+    if scale == 'none':
+        return f"{n:.0f}"
+
+    if scale == 'binary':
+        # Binary (IEC) units for bytes: KiB, MiB, GiB, TiB
+        suffixes = ['', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']
+        threshold = 1024
+    else:
+        # KMG (decimal) units: K, M, B, T
+        suffixes = ['', 'K', 'M', 'B', 'T']
+        threshold = 1000
+
+    for suffix in suffixes:
+        if abs(n) < threshold:
+            if suffix:
+                return f"{n:.1f}{suffix}"
+            return f"{n:.0f}"
+        n /= threshold
+
+    return f"{n:.1f}{suffixes[-1]}"
+
+
+def format_bytes(n: float) -> str:
+    """Format a byte count with binary unit suffix.
+
+    Args:
+        n: Number of bytes.
+
+    Returns:
+        Formatted string (e.g., "1.2MiB", "450KiB").
+    """
+    return format_number(n, scale='binary')
 
 
 class AnimatedProgressBar:
@@ -79,6 +124,7 @@ class AnimatedProgressBar:
         color: ColorType = 'cyan',
         width: int = 35,
         unit: str = "it",
+        unit_scale: UnitScaleType = 'none',
         log_interval: float = 30.0,
     ) -> None:
         """Initialize the progress bar.
@@ -89,7 +135,8 @@ class AnimatedProgressBar:
             bar_style: Visual style of the progress bar.
             color: Color scheme for the bar.
             width: Width of the progress bar in characters.
-            unit: Unit label for the progress display (e.g., "it", "file").
+            unit: Unit label for the progress display (e.g., "it", "file", "B").
+            unit_scale: Auto-scale large numbers: 'none', 'kmg' (K/M/B), or 'binary' (KiB/MiB).
             log_interval: Seconds between log updates in non-TTY mode.
         """
         self.total = total
@@ -98,6 +145,7 @@ class AnimatedProgressBar:
         self.color = color
         self.width = width
         self.unit = unit
+        self.unit_scale = unit_scale
         self.current: int = 0
         self.start_time: float | None = None
         self.spinner_idx: int = 0
@@ -262,10 +310,15 @@ class AnimatedProgressBar:
         anim = pattern[self.spinner_idx % len(pattern)]
 
         # Build parts for indeterminate display
+        if self.unit_scale != 'none':
+            count_str = format_number(self.current, scale=self.unit_scale)
+        else:
+            count_str = str(self.current)
+
         parts = [
             anim,
             f"{col}{self.desc}{c['reset']}" if self.desc else "",
-            f"{self.current} {self.unit}",
+            f"{count_str} {self.unit}",
             f"{elapsed:.1f}s",
         ]
         main_line = " ".join(p for p in parts if p)
@@ -318,14 +371,24 @@ class AnimatedProgressBar:
 
         bar = self._get_bar(progress)
 
+        # Format counts based on unit_scale
+        if self.unit_scale != 'none':
+            current_str = format_number(self.current, scale=self.unit_scale)
+            total_str = format_number(self.total, scale=self.unit_scale)
+            speed_str = format_number(speed, scale=self.unit_scale)
+        else:
+            current_str = str(self.current)
+            total_str = str(self.total)
+            speed_str = f"{speed:.1f}"
+
         # Rule 5: Build parts with structural characters preserved
         parts = [
             spinner,
             f"{col}{self.desc}{c['reset']}" if self.desc else "",
             f"[{col}{bar}{c['reset']}]",  # Brackets always preserved
             f"{progress*100:5.1f}%",
-            f"{self.current}/{self.total}",
-            f"{speed:.1f} {self.unit}/s",
+            f"{current_str}/{total_str}",
+            f"{speed_str} {self.unit}/s",
             f"{elapsed:.1f}s",
             f"ETA: {eta:.0f}s" if self.current < self.total else "",
         ]
@@ -453,6 +516,7 @@ class ProgressBarGroup:
         color: ColorType = 'cyan',
         width: int = 35,
         unit: str = "it",
+        unit_scale: UnitScaleType = 'none',
     ) -> AnimatedProgressBar:
         """Add a new progress bar to the group.
 
@@ -463,6 +527,7 @@ class ProgressBarGroup:
             color: Color scheme for the bar.
             width: Width of the progress bar in characters.
             unit: Unit label for the progress display.
+            unit_scale: Auto-scale large numbers: 'none', 'kmg' (K/M/B), or 'binary' (KiB/MiB).
 
         Returns:
             The created AnimatedProgressBar instance.
@@ -474,6 +539,7 @@ class ProgressBarGroup:
             color=color,
             width=width,
             unit=unit,
+            unit_scale=unit_scale,
         )
         # Link bar to this group
         bar._group = self

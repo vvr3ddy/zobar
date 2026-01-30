@@ -116,6 +116,31 @@ with AnimatedProgressBar(total=None, desc="Streaming") as pbar:
 
 In indeterminate mode, the bar shows a bouncing animation instead of percentage/ETA.
 
+### Unit Scaling
+
+For large numbers, use auto-scaling to display human-readable units:
+
+```python
+from zobar import AnimatedProgressBar
+
+# Binary units for bytes (KiB, MiB, GiB)
+total_bytes = 500 * 1024 * 1024  # 500 MiB
+with AnimatedProgressBar(total=total_bytes, desc="Download", unit="B", unit_scale='binary') as pbar:
+    for chunk in download_chunks():
+        pbar.update(len(chunk))
+
+# KMG units for large counts (K, M, B)
+with AnimatedProgressBar(total=1500000, desc="Items", unit_scale='kmg') as pbar:
+    for item in items:
+        process(item)
+        pbar.update(1)
+```
+
+Options for `unit_scale`:
+- `'none'` - No scaling (default)
+- `'kmg'` - K/M/B suffixes (Kilo, Mega, Billion)
+- `'binary'` - KiB/MiB/GiB suffixes (1024-based, for bytes)
+
 ### Styles
 
 Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.
