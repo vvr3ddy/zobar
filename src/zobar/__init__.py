@@ -54,6 +54,13 @@ class AnimatedProgressBar:
     }
     
     SPINNERS = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+
+    # Indeterminate mode animation patterns
+    INDETERMINATE_PATTERNS = {
+        'bouncing': ['[=   ]', '[ =  ]', '[  = ]', '[   =]', '[  = ]', '[ =  ]'],
+        'dots': ['.  ', '.. ', '...'],
+        'classic': ['|', '/', '-', '\\'],
+    }
     
     COLORS = {
         'cyan': '\033[96m', 'green': '\033[92m', 'yellow': '\033[93m',
@@ -66,7 +73,7 @@ class AnimatedProgressBar:
     
     def __init__(
         self,
-        total: int,
+        total: int | None,
         desc: str = "",
         bar_style: BarStyleType = 'gradient',
         color: ColorType = 'cyan',
@@ -77,7 +84,7 @@ class AnimatedProgressBar:
         """Initialize the progress bar.
 
         Args:
-            total: Total number of items/iterations.
+            total: Total number of items/iterations, or None for indeterminate mode.
             desc: Description text to display before the bar.
             bar_style: Visual style of the progress bar.
             color: Color scheme for the bar.
@@ -173,7 +180,9 @@ class AnimatedProgressBar:
         Args:
             n: Number of steps to increment progress by.
         """
-        self.current = min(self.current + n, self.total)  # Improvement 3: Clamp
+        self.current += n
+        if self.total is not None:
+            self.current = min(self.current, self.total)
 
         # If part of a group, let the group handle display
         if self._group and self._group.is_tty:
@@ -238,26 +247,77 @@ class AnimatedProgressBar:
             truncated += char
         return truncated + "..."
 
+    def _build_indeterminate_line(self) -> str:
+        """Build the progress line for indeterminate mode (total is None).
+
+        Returns:
+            The formatted indeterminate progress line.
+        """
+        elapsed = time.time() - self.start_time if self.start_time else 0
+        c = self.COLORS
+        col = c.get(self.color, c['cyan'])
+
+        # Use bouncing animation for indeterminate mode
+        pattern = self.INDETERMINATE_PATTERNS['bouncing']
+        anim = pattern[self.spinner_idx % len(pattern)]
+
+        # Build parts for indeterminate display
+        parts = [
+            anim,
+            f"{col}{self.desc}{c['reset']}" if self.desc else "",
+            f"{self.current} {self.unit}",
+            f"{elapsed:.1f}s",
+        ]
+        main_line = " ".join(p for p in parts if p)
+        suffix_part = f"{c['yellow']}{self.suffix}{c['reset']}" if self.suffix else ""
+
+        # Check if everything fits on one line
+        full_line = main_line + (" " + suffix_part if suffix_part else "")
+
+        if visible_len(full_line) <= self.term_width - 2:
+            line = full_line
+        else:
+            # Wrap mode
+            if visible_len(main_line) > self.term_width - 2:
+                main_line = self._truncate(main_line, self.term_width - 2)
+
+            if suffix_part:
+                if visible_len(suffix_part) > self.term_width - 2:
+                    suffix_part = self._truncate(suffix_part, self.term_width - 2)
+                line = main_line + "\n" + suffix_part
+            else:
+                line = main_line
+
+        # Always end with color reset
+        if not line.endswith(c['reset']):
+            line += c['reset']
+
+        return line
+
     def _build_line(self) -> str:
         """Build the progress line with proper structure.
 
         Returns:
             The formatted progress line, potentially with newlines for wrapping.
         """
+        # Handle indeterminate mode (total is None)
+        if self.total is None:
+            return self._build_indeterminate_line()
+
         progress = min(self.current / max(self.total, 1), 1.0)
         elapsed = time.time() - self.start_time if self.start_time else 0
         c = self.COLORS
         col = c.get(self.color, c['cyan'])
-        
+
         # Spinner (advance only happens in _display for TTY)
         spinner = self.SPINNERS[self.spinner_idx % len(self.SPINNERS)] if self.current < self.total else '✓'
-        
+
         # Speed & ETA
         speed = self.current / elapsed if elapsed > 0 else 0
         eta = (self.total - self.current) / speed if speed > 0 and self.current < self.total else 0
-        
+
         bar = self._get_bar(progress)
-        
+
         # Rule 5: Build parts with structural characters preserved
         parts = [
             spinner,
@@ -313,18 +373,22 @@ class AnimatedProgressBar:
         if not self.is_tty:
             now = time.time()
             should_log = False
-            
+
             # Log if finished
-            if force or self.current == self.total:
+            if force or (self.total is not None and self.current == self.total):
                 should_log = True
             # Log if interval passed
             elif self.log_interval and (now - self.last_log_time >= self.log_interval):
                 should_log = True
                 self.last_log_time = now
-                
+
             if should_log:
-                progress = min(self.current / max(self.total, 1), 1.0)
-                msg = f"{self.desc}: {progress*100:.1f}% ({self.current}/{self.total})"
+                if self.total is None:
+                    # Indeterminate mode logging
+                    msg = f"{self.desc}: {self.current} {self.unit} processed"
+                else:
+                    progress = min(self.current / max(self.total, 1), 1.0)
+                    msg = f"{self.desc}: {progress*100:.1f}% ({self.current}/{self.total})"
                 if self.suffix:
                     msg += f" {self.suffix}"
                 print(msg, file=sys.stderr)

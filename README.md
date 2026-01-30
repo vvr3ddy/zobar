@@ -100,6 +100,22 @@ async for item in async_progress_bar(async_items, total=100, desc="Processing"):
     await process(item)
 ```
 
+### Indeterminate Progress Mode
+
+For tasks where the total is unknown (streaming downloads, polling, etc.):
+
+```python
+from zobar import AnimatedProgressBar
+
+# Use total=None for indeterminate mode
+with AnimatedProgressBar(total=None, desc="Streaming") as pbar:
+    for item in stream_of_unknown_length():
+        process(item)
+        pbar.update(1)
+```
+
+In indeterminate mode, the bar shows a bouncing animation instead of percentage/ETA.
+
 ### Styles
 
 Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.
