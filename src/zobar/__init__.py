@@ -9,17 +9,33 @@ Implements the 6 rules:
 5. Never truncate structural characters
 6. Graceful TTY degradation
 """
-import sys
-import time
+from __future__ import annotations
+
 import os
 import re
+import sys
+import time
+from typing import Any, Iterable, Iterator, Literal, Sequence, TypeVar
 
 # ANSI escape pattern for width calculation
 ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
 
+# Type aliases for better readability
+ColorType = Literal['cyan', 'green', 'yellow', 'blue', 'magenta', 'red', 'reset', 'bold']
+BarStyleType = Literal['classic', 'gradient', 'braille', 'circles', 'blocks']
+
+T = TypeVar('T')
+
 
 def visible_len(s: str) -> int:
-    """Return visible length (excluding ANSI codes)."""
+    """Return visible length (excluding ANSI codes).
+
+    Args:
+        s: String that may contain ANSI escape codes.
+
+    Returns:
+        The visible length of the string with ANSI codes removed.
+    """
     return len(ANSI_RE.sub('', s))
 
 
@@ -48,39 +64,68 @@ class AnimatedProgressBar:
     CLEAR_LINE = '\033[K'  # Clear from cursor to end of line
     CLEAR_DOWN = '\033[J'  # Clear from cursor to end of screen
     
-    def __init__(self, total: int, desc: str = "", bar_style: str = 'gradient',
-                 color: str = 'cyan', width: int = 35, unit: str = "it", log_interval: float = 30.0):
+    def __init__(
+        self,
+        total: int,
+        desc: str = "",
+        bar_style: BarStyleType = 'gradient',
+        color: ColorType = 'cyan',
+        width: int = 35,
+        unit: str = "it",
+        log_interval: float = 30.0,
+    ) -> None:
+        """Initialize the progress bar.
+
+        Args:
+            total: Total number of items/iterations.
+            desc: Description text to display before the bar.
+            bar_style: Visual style of the progress bar.
+            color: Color scheme for the bar.
+            width: Width of the progress bar in characters.
+            unit: Unit label for the progress display (e.g., "it", "file").
+            log_interval: Seconds between log updates in non-TTY mode.
+        """
         self.total = total
         self.desc = desc
         self.bar_style = bar_style
         self.color = color
         self.width = width
         self.unit = unit
-        self.current = 0
-        self.start_time = None
-        self.spinner_idx = 0
-        self.suffix = ""
+        self.current: int = 0
+        self.start_time: float | None = None
+        self.spinner_idx: int = 0
+        self.suffix: str = ""
         self.log_interval = log_interval
-        self.last_log_time = 0
-        
+        self.last_log_time: float = 0
+
         # Rule 6: TTY detection
-        self.is_tty = sys.stdout.isatty()
-        self._last_drawn = -1  # For deduplication
-        self._last_line_count = 1 # Track number of lines for clearing
-        
+        self.is_tty: bool = sys.stdout.isatty()
+        self._last_drawn: int = -1  # For deduplication
+        self._last_line_count: int = 1  # Track number of lines for clearing
+
         # Issue 2 fix: Use stdout fd for terminal size
         try:
-            self.term_width = os.get_terminal_size(sys.stdout.fileno()).columns
+            self.term_width: int = os.get_terminal_size(sys.stdout.fileno()).columns
         except OSError:
             self.term_width = 80
             
-    def __enter__(self):
+    def __enter__(self) -> AnimatedProgressBar:
+        """Enter the context manager and start the progress bar.
+
+        Returns:
+            The progress bar instance.
+        """
         self.start_time = time.time()
         self.last_log_time = self.start_time
         self._display()
         return self
-    
-    def __exit__(self, *args):
+
+    def __exit__(self, *args: Any) -> None:
+        """Exit the context manager and display completion message.
+
+        Args:
+            *args: Exception info if an exception was raised (ignored).
+        """
         # Issue 1 fix: Don't redraw twice, just show final message
         c = self.COLORS
         if self.is_tty:
@@ -91,16 +136,33 @@ class AnimatedProgressBar:
             sys.stdout.flush()
         else:
             print("✓ Done", file=sys.stderr)
-    
-    def update(self, n: int = 1):
+
+    def update(self, n: int = 1) -> None:
+        """Update the progress by n steps.
+
+        Args:
+            n: Number of steps to increment progress by.
+        """
         self.current = min(self.current + n, self.total)  # Improvement 3: Clamp
         self._display()
-    
-    def set_suffix(self, suffix: str):
-        """Set a suffix to display after the progress bar."""
+
+    def set_suffix(self, suffix: str) -> None:
+        """Set a suffix to display after the progress bar.
+
+        Args:
+            suffix: The suffix text to display.
+        """
         self.suffix = suffix
     
     def _get_bar(self, progress: float) -> str:
+        """Generate the progress bar visual representation.
+
+        Args:
+            progress: Progress value between 0.0 and 1.0.
+
+        Returns:
+            String representation of the progress bar.
+        """
         style = self.BAR_STYLES.get(self.bar_style, self.BAR_STYLES['gradient'])
         filled = int(progress * self.width)
         
@@ -121,7 +183,15 @@ class AnimatedProgressBar:
         return bar
     
     def _truncate(self, s: str, width: int) -> str:
-        """Truncate string to width, preserving structure."""
+        """Truncate string to width, preserving structure.
+
+        Args:
+            s: String to truncate.
+            width: Maximum visible width allowed.
+
+        Returns:
+            Truncated string with "..." appended if truncated.
+        """
         if visible_len(s) <= width:
             return s
         
@@ -134,7 +204,11 @@ class AnimatedProgressBar:
         return truncated + "..."
 
     def _build_line(self) -> str:
-        """Build the progress line with proper structure."""
+        """Build the progress line with proper structure.
+
+        Returns:
+            The formatted progress line, potentially with newlines for wrapping.
+        """
         progress = min(self.current / max(self.total, 1), 1.0)
         elapsed = time.time() - self.start_time if self.start_time else 0
         c = self.COLORS
@@ -189,7 +263,12 @@ class AnimatedProgressBar:
         
         return line
     
-    def _display(self, force: bool = False):
+    def _display(self, force: bool = False) -> None:
+        """Display the progress bar.
+
+        Args:
+            force: Force display even if progress hasn't changed.
+        """
         # Improvement 1: Avoid redraw if nothing changed (reduces flicker)
         if not force and self.current == self._last_drawn:
             return
@@ -237,8 +316,27 @@ class AnimatedProgressBar:
 ProgressBar = AnimatedProgressBar
 
 
-def progress_bar(iterable, desc: str = "", total: int = None, **kwargs):
-    """Iterator wrapper with progress bar."""
+def progress_bar(
+    iterable: Iterable[T],
+    desc: str = "",
+    total: int | None = None,
+    **kwargs: Any,
+) -> Iterator[T]:
+    """Iterator wrapper with progress bar.
+
+    Args:
+        iterable: An iterable to wrap with progress tracking.
+        desc: Description text to display before the bar.
+        total: Total number of items (auto-detected from len() if not provided).
+        **kwargs: Additional arguments passed to AnimatedProgressBar.
+
+    Yields:
+        Items from the iterable while showing progress.
+
+    Example:
+        >>> for item in progress_bar(range(100), desc="Processing"):
+        ...     process(item)
+    """
     total = total or len(iterable)
     with AnimatedProgressBar(total=total, desc=desc, **kwargs) as pbar:
         for item in iterable:
