@@ -2,6 +2,12 @@
 
 **Zero Overhead Bar**
 
+[![CI](https://github.com/vvr3ddy/zobar/actions/workflows/ci.yml/badge.svg)](https://github.com/vvr3ddy/zobar/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/zobar)](https://pypi.org/project/zobar/)
+[![Python](https://img.shields.io/pypi/pyversions/zobar)](https://pypi.org/project/zobar/)
+[![License](https://img.shields.io/pypi/l/zobar)](https://github.com/vvr3ddy/zobar/blob/master/LICENSE)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 ![zobar demo](https://raw.githubusercontent.com/vvr3ddy/zobar/refs/heads/master/media/demo_parallel.gif)
 
 A zero-dependency, high-performance, hygienically correct progress bar for Python. Designed for HPC environments, workstations, and anywhere you need a progress bar that just works without breaking your terminal logs.
