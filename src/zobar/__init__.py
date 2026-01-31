@@ -125,7 +125,9 @@ class AnimatedProgressBar:
         width: int = 35,
         unit: str = "it",
         unit_scale: UnitScaleType = 'none',
+        smoothing: float = 0.3,
         log_interval: float = 30.0,
+        log_timestamp: bool = False,
     ) -> None:
         """Initialize the progress bar.
 
@@ -137,7 +139,9 @@ class AnimatedProgressBar:
             width: Width of the progress bar in characters.
             unit: Unit label for the progress display (e.g., "it", "file", "B").
             unit_scale: Auto-scale large numbers: 'none', 'kmg' (K/M/B), or 'binary' (KiB/MiB).
+            smoothing: EMA smoothing factor for ETA (0=more smoothing, 1=no smoothing).
             log_interval: Seconds between log updates in non-TTY mode.
+            log_timestamp: Add timestamps to non-TTY log messages.
         """
         self.total = total
         self.desc = desc
@@ -146,12 +150,18 @@ class AnimatedProgressBar:
         self.width = width
         self.unit = unit
         self.unit_scale = unit_scale
+        self.smoothing = smoothing
+        self.log_timestamp = log_timestamp
         self.current: int = 0
         self.start_time: float | None = None
         self.spinner_idx: int = 0
         self.suffix: str = ""
         self.log_interval = log_interval
         self.last_log_time: float = 0
+
+        # EMA for rate smoothing
+        self._ema_rate: float | None = None
+        self._last_update_time: float | None = None
 
         # Rule 6: TTY detection
         self.is_tty: bool = sys.stdout.isatty()
@@ -365,9 +375,23 @@ class AnimatedProgressBar:
         # Spinner (advance only happens in _display for TTY)
         spinner = self.SPINNERS[self.spinner_idx % len(self.SPINNERS)] if self.current < self.total else '✓'
 
-        # Speed & ETA
+        # Speed & ETA with EMA smoothing
         speed = self.current / elapsed if elapsed > 0 else 0
-        eta = (self.total - self.current) / speed if speed > 0 and self.current < self.total else 0
+
+        # Apply EMA smoothing to rate if enabled
+        if self.smoothing < 1.0 and speed > 0:
+            if self._ema_rate is None:
+                self._ema_rate = speed
+            else:
+                # EMA: new_ema = alpha * new_value + (1 - alpha) * old_ema
+                # We use smoothing as alpha, so lower smoothing = more averaging
+                alpha = self.smoothing
+                self._ema_rate = alpha * speed + (1 - alpha) * self._ema_rate
+            display_speed = self._ema_rate
+        else:
+            display_speed = speed
+
+        eta = (self.total - self.current) / display_speed if display_speed > 0 and self.current < self.total else 0
 
         bar = self._get_bar(progress)
 
@@ -375,11 +399,11 @@ class AnimatedProgressBar:
         if self.unit_scale != 'none':
             current_str = format_number(self.current, scale=self.unit_scale)
             total_str = format_number(self.total, scale=self.unit_scale)
-            speed_str = format_number(speed, scale=self.unit_scale)
+            speed_str = format_number(display_speed, scale=self.unit_scale)
         else:
             current_str = str(self.current)
             total_str = str(self.total)
-            speed_str = f"{speed:.1f}"
+            speed_str = f"{display_speed:.1f}"
 
         # Rule 5: Build parts with structural characters preserved
         parts = [
@@ -446,12 +470,17 @@ class AnimatedProgressBar:
                 self.last_log_time = now
 
             if should_log:
+                # Add timestamp if enabled
+                timestamp = ""
+                if self.log_timestamp:
+                    timestamp = time.strftime("%Y-%m-%d %H:%M:%S") + " | "
+
                 if self.total is None:
                     # Indeterminate mode logging
-                    msg = f"{self.desc}: {self.current} {self.unit} processed"
+                    msg = f"{timestamp}{self.desc}: {self.current} {self.unit} processed"
                 else:
                     progress = min(self.current / max(self.total, 1), 1.0)
-                    msg = f"{self.desc}: {progress*100:.1f}% ({self.current}/{self.total})"
+                    msg = f"{timestamp}{self.desc}: {progress*100:.1f}% ({self.current}/{self.total})"
                 if self.suffix:
                     msg += f" {self.suffix}"
                 print(msg, file=sys.stderr)
@@ -517,6 +546,8 @@ class ProgressBarGroup:
         width: int = 35,
         unit: str = "it",
         unit_scale: UnitScaleType = 'none',
+        smoothing: float = 0.3,
+        log_timestamp: bool = False,
     ) -> AnimatedProgressBar:
         """Add a new progress bar to the group.
 
@@ -528,6 +559,8 @@ class ProgressBarGroup:
             width: Width of the progress bar in characters.
             unit: Unit label for the progress display.
             unit_scale: Auto-scale large numbers: 'none', 'kmg' (K/M/B), or 'binary' (KiB/MiB).
+            smoothing: EMA smoothing factor for ETA (0=more smoothing, 1=no smoothing).
+            log_timestamp: Add timestamps to non-TTY log messages.
 
         Returns:
             The created AnimatedProgressBar instance.
@@ -540,6 +573,8 @@ class ProgressBarGroup:
             width=width,
             unit=unit,
             unit_scale=unit_scale,
+            smoothing=smoothing,
+            log_timestamp=log_timestamp,
         )
         # Link bar to this group
         bar._group = self
