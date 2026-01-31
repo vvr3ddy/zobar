@@ -194,6 +194,112 @@ Named colors available: `cyan`, `green`, `yellow`, `blue`, `magenta`, `red`, `wh
 
 Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.
 
+## API Reference
+
+### `AnimatedProgressBar`
+
+The main progress bar class with full-featured display and control.
+
+```python
+AnimatedProgressBar(
+    total: int | None,
+    desc: str = "",
+    bar_style: BarStyleType = 'gradient',
+    color: CustomColorInput = 'cyan',
+    width: int = 35,
+    unit: str = "it",
+    unit_scale: UnitScaleType = 'none',
+    smoothing: float = 0.3,
+    log_interval: float = 30.0,
+    log_timestamp: bool = False,
+    thread_safe: bool = False,
+)
+```
+
+**Parameters:**
+- `total`: Total items to process, or `None` for indeterminate mode
+- `desc`: Description text shown before the bar
+- `bar_style`: Visual style - `'classic'`, `'gradient'`, `'braille'`, `'circles'`, `'blocks'`
+- `color`: Color name, RGB tuple, or hex string
+- `width`: Width of progress bar in characters
+- `unit`: Unit label (e.g., `'it'`, `'B'`, `'file'`)
+- `unit_scale`: Auto-scale units - `'none'`, `'kmg'`, `'binary'`
+- `smoothing`: EMA smoothing factor for ETA (0=smooth, 1=instant)
+- `log_interval`: Seconds between logs in non-TTY mode
+- `log_timestamp`: Add timestamps to non-TTY log messages
+- `thread_safe`: Enable thread-safe operations with locking
+
+**Methods:**
+- `update(n=1)`: Increment progress by n steps
+- `set_suffix(suffix)`: Set a suffix message to display
+
+### `ProgressBarGroup`
+
+Manages multiple progress bars with automatic cursor positioning.
+
+```python
+ProgressBarGroup(refresh_interval: float = 0.05)
+```
+
+**Methods:**
+- `add_bar(total, desc="", ...)`: Add a new progress bar to the group
+- `refresh()`: Force a refresh of all bars
+- `remove_bar(bar)`: Remove a bar from the group
+
+### `progress_bar(iterable, desc="", total=None, **kwargs)`
+
+Synchronous iterator wrapper for progress tracking.
+
+```python
+for item in progress_bar(items, desc="Processing"):
+    process(item)
+```
+
+### `async_progress_bar(async_iterable, desc="", total=None, **kwargs)`
+
+Async iterator wrapper for progress tracking.
+
+```python
+async for item in async_progress_bar(async_items, total=100):
+    await process(item)
+```
+
+## Migration from Other Libraries
+
+### From tqdm
+
+```python
+# tqdm
+from tqdm import tqdm
+for item in tqdm(items, desc="Processing"):
+    process(item)
+
+# zobar (direct replacement)
+from zobar import progress_bar
+for item in progress_bar(items, desc="Processing"):
+    process(item)
+```
+
+### From rich.progress
+
+```python
+# rich
+from rich.progress import track
+for item in track(items, description="Processing"):
+    process(item)
+
+# zobar (direct replacement)
+from zobar import progress_bar
+for item in progress_bar(items, desc="Processing"):
+    process(item)
+```
+
+**Key Differences:**
+- zobar has zero dependencies (vs rich's many dependencies)
+- zobar logs to stderr (rich uses stdout)
+- zobar has simpler API for most use cases
+- rich offers more widgets/table formatting (use rich if you need those)
+
 ## Changelog
 
 ### v0.1.4
