@@ -170,6 +170,30 @@ with AnimatedProgressBar(total=1000, desc="Processing", thread_safe=True) as pba
 
 Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.
 
+### Custom Colors
+
+Beyond predefined colors, you can use RGB tuples or hex codes for unlimited color options:
+
+```python
+from zobar import AnimatedProgressBar
+
+# RGB tuple (red, green, blue) - values 0-255
+with AnimatedProgressBar(total=100, desc="Custom", color=(255, 87, 51)):
+    process()
+
+# Hex color string (web-style)
+with AnimatedProgressBar(total=100, desc="Brand", color="#FF5733"):
+    process()
+
+# Named colors still work
+with AnimatedProgressBar(total=100, desc="Named", color="cyan"):
+    process()
+```
+
+Named colors available: `cyan`, `green`, `yellow`, `blue`, `magenta`, `red`, `white`, `black`.
+
+Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.
+
 ## Changelog
 
 ### v0.1.4

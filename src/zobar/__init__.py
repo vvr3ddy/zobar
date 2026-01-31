@@ -26,6 +26,9 @@ ColorType = Literal['cyan', 'green', 'yellow', 'blue', 'magenta', 'red', 'reset'
 BarStyleType = Literal['classic', 'gradient', 'braille', 'circles', 'blocks']
 UnitScaleType = Literal['none', 'kmg', 'binary']
 
+# Color type for custom colors
+CustomColorInput = str | tuple[int, int, int]  # hex string "#FF5733" or RGB tuple (255, 87, 51)
+
 T = TypeVar('T')
 
 
@@ -85,6 +88,57 @@ def format_bytes(n: float) -> str:
     return format_number(n, scale='binary')
 
 
+def parse_color(color: str | tuple[int, int, int]) -> str:
+    """Convert a color to ANSI escape code.
+
+    Args:
+        color: Color as named color ('cyan', 'red', etc.),
+                hex string ('#FF5733'), or RGB tuple ((255, 87, 51)).
+
+    Returns:
+        ANSI escape code for the color.
+    """
+    # Named colors
+    if isinstance(color, str) and not color.startswith('#'):
+        named_colors = {
+            'cyan': '\033[96m', 'green': '\033[92m', 'yellow': '\033[93m',
+            'blue': '\033[94m', 'magenta': '\033[95m', 'red': '\033[91m',
+            'reset': '\033[0m', 'bold': '\033[1m',
+            'white': '\033[97m', 'black': '\033[90m',
+        }
+        if color in named_colors:
+            return named_colors[color]
+        raise ValueError(f"Unknown color name: {color}")
+
+    # RGB tuple
+    if isinstance(color, tuple) and len(color) == 3:
+        r, g, b = color
+        if not all(0 <= c <= 255 for c in (r, g, b)):
+            raise ValueError(f"RGB values must be 0-255: {color}")
+        return f'\033[38;2;{r};{g};{b}m'
+
+    # Hex string
+    if isinstance(color, str) and color.startswith('#'):
+        hex_color = color.lstrip('#')
+        if len(hex_color) not in (3, 6):
+            raise ValueError(f"Hex color must be 3 or 6 digits: {color}")
+
+        # Expand 3-digit hex to 6-digit
+        if len(hex_color) == 3:
+            hex_color = ''.join(c * 2 for c in hex_color)
+
+        try:
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+        except ValueError:
+            raise ValueError(f"Invalid hex color: {color}")
+
+        return f'\033[38;2;{r};{g};{b}m'
+
+    raise ValueError(f"Invalid color format: {color}")
+
+
 class AnimatedProgressBar:
     """
     Progress bar with colors, animations, and terminal hygiene.
@@ -122,7 +176,7 @@ class AnimatedProgressBar:
         total: int | None,
         desc: str = "",
         bar_style: BarStyleType = 'gradient',
-        color: ColorType = 'cyan',
+        color: CustomColorInput = 'cyan',
         width: int = 35,
         unit: str = "it",
         unit_scale: UnitScaleType = 'none',
@@ -137,7 +191,7 @@ class AnimatedProgressBar:
             total: Total number of items/iterations, or None for indeterminate mode.
             desc: Description text to display before the bar.
             bar_style: Visual style of the progress bar.
-            color: Color scheme for the bar.
+            color: Color as name ('cyan', 'red', etc.), hex ('#FF5733'), or RGB tuple ((255, 87, 51)).
             width: Width of the progress bar in characters.
             unit: Unit label for the progress display (e.g., "it", "file", "B").
             unit_scale: Auto-scale large numbers: 'none', 'kmg' (K/M/B), or 'binary' (KiB/MiB).
@@ -149,7 +203,8 @@ class AnimatedProgressBar:
         self.total = total
         self.desc = desc
         self.bar_style = bar_style
-        self.color = color
+        self._color_input = color  # Store original input
+        self._color_code = parse_color(color)  # Parse to ANSI code
         self.width = width
         self.unit = unit
         self.unit_scale = unit_scale
@@ -336,7 +391,7 @@ class AnimatedProgressBar:
         """
         elapsed = time.time() - self.start_time if self.start_time else 0
         c = self.COLORS
-        col = c.get(self.color, c['cyan'])
+        col = self._color_code
 
         # Use bouncing animation for indeterminate mode
         pattern = self.INDETERMINATE_PATTERNS['bouncing']
@@ -393,7 +448,7 @@ class AnimatedProgressBar:
         progress = min(self.current / max(self.total, 1), 1.0)
         elapsed = time.time() - self.start_time if self.start_time else 0
         c = self.COLORS
-        col = c.get(self.color, c['cyan'])
+        col = self._color_code
 
         # Spinner (advance only happens in _display for TTY)
         spinner = self.SPINNERS[self.spinner_idx % len(self.SPINNERS)] if self.current < self.total else '✓'
