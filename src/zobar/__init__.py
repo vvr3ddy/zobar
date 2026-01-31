@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import threading
 import time
 from typing import Any, AsyncIterable, AsyncIterator, Iterable, Iterator, Literal, Sequence, TypeVar
 
@@ -128,6 +129,7 @@ class AnimatedProgressBar:
         smoothing: float = 0.3,
         log_interval: float = 30.0,
         log_timestamp: bool = False,
+        thread_safe: bool = False,
     ) -> None:
         """Initialize the progress bar.
 
@@ -142,6 +144,7 @@ class AnimatedProgressBar:
             smoothing: EMA smoothing factor for ETA (0=more smoothing, 1=no smoothing).
             log_interval: Seconds between log updates in non-TTY mode.
             log_timestamp: Add timestamps to non-TTY log messages.
+            thread_safe: Enable thread-safe operations with locking (has performance overhead).
         """
         self.total = total
         self.desc = desc
@@ -152,6 +155,7 @@ class AnimatedProgressBar:
         self.unit_scale = unit_scale
         self.smoothing = smoothing
         self.log_timestamp = log_timestamp
+        self.thread_safe = thread_safe
         self.current: int = 0
         self.start_time: float | None = None
         self.spinner_idx: int = 0
@@ -162,6 +166,9 @@ class AnimatedProgressBar:
         # EMA for rate smoothing
         self._ema_rate: float | None = None
         self._last_update_time: float | None = None
+
+        # Thread safety
+        self._lock: threading.Lock | None = threading.Lock() if thread_safe else None
 
         # Rule 6: TTY detection
         self.is_tty: bool = sys.stdout.isatty()
@@ -238,6 +245,18 @@ class AnimatedProgressBar:
         Args:
             n: Number of steps to increment progress by.
         """
+        if self._lock:
+            with self._lock:
+                self._update_unsafe(n)
+        else:
+            self._update_unsafe(n)
+
+    def _update_unsafe(self, n: int) -> None:
+        """Internal update method without locking.
+
+        Args:
+            n: Number of steps to increment progress by.
+        """
         self.current += n
         if self.total is not None:
             self.current = min(self.current, self.total)
@@ -254,7 +273,11 @@ class AnimatedProgressBar:
         Args:
             suffix: The suffix text to display.
         """
-        self.suffix = suffix
+        if self._lock:
+            with self._lock:
+                self.suffix = suffix
+        else:
+            self.suffix = suffix
     
     def _get_bar(self, progress: float) -> str:
         """Generate the progress bar visual representation.
@@ -548,6 +571,7 @@ class ProgressBarGroup:
         unit_scale: UnitScaleType = 'none',
         smoothing: float = 0.3,
         log_timestamp: bool = False,
+        thread_safe: bool = False,
     ) -> AnimatedProgressBar:
         """Add a new progress bar to the group.
 
@@ -561,6 +585,7 @@ class ProgressBarGroup:
             unit_scale: Auto-scale large numbers: 'none', 'kmg' (K/M/B), or 'binary' (KiB/MiB).
             smoothing: EMA smoothing factor for ETA (0=more smoothing, 1=no smoothing).
             log_timestamp: Add timestamps to non-TTY log messages.
+            thread_safe: Enable thread-safe operations with locking.
 
         Returns:
             The created AnimatedProgressBar instance.
@@ -575,6 +600,7 @@ class ProgressBarGroup:
             unit_scale=unit_scale,
             smoothing=smoothing,
             log_timestamp=log_timestamp,
+            thread_safe=thread_safe,
         )
         # Link bar to this group
         bar._group = self

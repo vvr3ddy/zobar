@@ -141,6 +141,31 @@ Options for `unit_scale`:
 - `'kmg'` - K/M/B suffixes (Kilo, Mega, Billion)
 - `'binary'` - KiB/MiB/GiB suffixes (1024-based, for bytes)
 
+### Thread-Safe Usage
+
+For multi-threaded applications, enable thread-safety with the `thread_safe` parameter:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from zobar import AnimatedProgressBar
+
+# Create a thread-safe progress bar
+with AnimatedProgressBar(total=1000, desc="Processing", thread_safe=True) as pbar:
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        def worker(items):
+            for item in items:
+                process(item)
+                pbar.update(1)  # Safe to call from multiple threads
+
+        # Distribute work among threads
+        executor.submit(worker, items_chunk_1)
+        executor.submit(worker, items_chunk_2)
+        executor.submit(worker, items_chunk_3)
+        executor.submit(worker, items_chunk_4)
+```
+
+**Note:** By default, progress bars are **not thread-safe** for better performance. Only enable `thread_safe=True` when using multiple threads. Each thread can safely call `update()` and `set_suffix()` on a thread-safe bar.
+
 ### Styles
 
 Available styles: `classic`, `gradient`, `braille`, `circles`, `blocks`.
