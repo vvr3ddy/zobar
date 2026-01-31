@@ -308,6 +308,22 @@ for item in progress_bar(items, desc="Processing"):
 
 ## Changelog
 
+### v0.2.0
+
+Major feature release with significant enhancements:
+
+- **Parallel Progress Bars:** New `ProgressBarGroup` class for tracking multiple concurrent tasks
+- **Async Support:** Full async/await support with `async_progress_bar()` and async context manager
+- **Indeterminate Mode:** Support for unknown totals with bouncing animation (`total=None`)
+- **Unit Scaling:** Auto-format large numbers with K/M/B or KiB/MiB/GiB suffixes
+- **ETA Smoothing:** Exponential moving average for stable time estimates
+- **Thread Safety:** Optional locking for multi-threaded applications
+- **Custom Colors:** RGB tuples and hex color codes for unlimited color options
+- **Timestamp Logging:** Optional timestamps on non-TTY log messages
+- **Type Hints:** Comprehensive type annotations throughout the codebase
+- **CI/CD:** GitHub Actions workflow and pre-commit hooks
+- **API Documentation:** Complete API reference and migration guide
+
 ### v0.1.4
 *   Fixed suffix truncation by implementing multi-line wrapping and proper cursor management.
 
